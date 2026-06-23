@@ -1,0 +1,1933 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32-C3 Wearable Safety Monitor</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
+    <style>
+      :root {
+        --bg: #071315;
+        --panel: #0e2023;
+        --panel-2: #12282b;
+        --panel-3: #173235;
+        --line: rgba(148, 237, 218, 0.16);
+        --text: #eefdf9;
+        --muted: #92aaa7;
+        --soft: #c6dcda;
+        --mint: #62f1d2;
+        --teal: #13b8a6;
+        --cyan: #63d8ff;
+        --green: #8ff5b2;
+        --yellow: #ffd166;
+        --orange: #ff985f;
+        --red: #ff5d6c;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+        --radius: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(98, 241, 210, 0.13), transparent 34rem),
+          linear-gradient(135deg, #061112 0%, #071315 44%, #092022 100%);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      section {
+        scroll-margin-top: 22px;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .page-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .page-grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .page-grid.two-col {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .page-grid.three-col {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .page-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .page-summary-card {
+        border: 1px solid rgba(148, 237, 218, 0.12);
+        border-radius: var(--radius);
+        padding: 14px;
+        background: rgba(7, 19, 21, 0.42);
+      }
+
+      .page-summary-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .page-summary-value {
+        margin-top: 10px;
+        font-size: 20px;
+        font-weight: 850;
+      }
+
+      .page-summary-note {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .page-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .mini-chart {
+        height: 150px;
+        display: flex;
+        align-items: end;
+        gap: 6px;
+        padding-top: 10px;
+      }
+
+      .mini-chart-bar {
+        flex: 1;
+        min-width: 8px;
+        border-radius: 8px 8px 2px 2px;
+        background: linear-gradient(180deg, var(--mint), rgba(19, 184, 166, 0.35));
+      }
+
+      .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .chart-grid.single-plus-pair {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .chart-grid.pairs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .chart-grid.single-plus-pair .chart-card.full-width {
+        grid-column: 1 / -1;
+      }
+
+      .chart-card {
+        border: 1px solid rgba(148, 237, 218, 0.12);
+        border-radius: var(--radius);
+        background: rgba(7, 19, 21, 0.34);
+        padding: 14px;
+      }
+
+      .chart-card h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .chart-card p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .chart-card .mini-chart {
+        margin-top: 10px;
+      }
+
+      .section-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .field-grid.three-col {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        border: 1px solid rgba(148, 237, 218, 0.14);
+        border-radius: 10px;
+        background: rgba(7, 19, 21, 0.46);
+        color: var(--text);
+        padding: 10px 12px;
+        outline: none;
+        font: inherit;
+      }
+
+      .field textarea {
+        min-height: 92px;
+        resize: vertical;
+      }
+
+      .editable-card .card-header {
+        align-items: center;
+      }
+
+      .card-actions {
+        margin-left: auto;
+      }
+
+      .edit-toggle {
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(98, 241, 210, 0.26);
+        border-radius: 10px;
+        background: rgba(98, 241, 210, 0.1);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .app-shell.sidebar-collapsed {
+        grid-template-columns: 92px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 24px 18px;
+        border-right: 1px solid var(--line);
+        background: rgba(7, 19, 21, 0.84);
+        backdrop-filter: blur(24px);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      .sidebar.collapsed {
+        padding: 18px 12px;
+      }
+
+      .sidebar.collapsed .brand {
+        justify-content: center;
+        padding-bottom: 18px;
+      }
+
+      .sidebar.collapsed .brand > div:last-child,
+      .sidebar.collapsed .footer-label,
+      .sidebar.collapsed .footer-note,
+      .sidebar.collapsed .nav-button span:last-child {
+        display: none;
+      }
+
+      .sidebar.collapsed .nav-button {
+        justify-content: center;
+        padding: 0;
+      }
+
+      .sidebar.collapsed .nav-icon {
+        width: auto;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 6px 26px;
+        cursor: pointer;
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(98, 241, 210, 0.38);
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(98, 241, 210, 0.22), rgba(19, 184, 166, 0.06));
+        box-shadow: 0 0 36px rgba(98, 241, 210, 0.12);
+      }
+
+      .pulse-ring {
+        width: 18px;
+        height: 18px;
+        border: 3px solid var(--mint);
+        border-radius: 50%;
+        position: relative;
+      }
+
+      .pulse-ring::after {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        background: var(--mint);
+        border-radius: 50%;
+      }
+
+      .brand-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 780;
+      }
+
+      .brand-subtitle {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 6px;
+        min-height: 0;
+      }
+
+      .nav-button {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        background: transparent;
+        color: var(--soft);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .nav-button:hover,
+      .nav-button.active {
+        border-color: rgba(98, 241, 210, 0.24);
+        background: rgba(98, 241, 210, 0.08);
+        color: var(--text);
+      }
+
+      .nav-icon {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        color: var(--mint);
+        font-size: 15px;
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        padding-top: 18px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(18, 40, 43, 0.72);
+      }
+
+      .footer-label {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .footer-value {
+        margin: 6px 0 0;
+        font-weight: 760;
+      }
+
+      .main {
+        min-width: 0;
+        padding: 26px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        color: var(--mint);
+        font-size: 12px;
+        text-transform: uppercase;
+        font-weight: 780;
+      }
+
+      h1 {
+        margin: 6px 0 0;
+        font-size: clamp(28px, 4vw, 46px);
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .topbar-copy {
+        margin: 10px 0 0;
+        max-width: 740px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .topbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .button {
+        min-height: 42px;
+        border: 1px solid rgba(98, 241, 210, 0.26);
+        border-radius: var(--radius);
+        color: var(--text);
+        background: rgba(98, 241, 210, 0.08);
+        padding: 0 14px;
+        cursor: pointer;
+      }
+
+      .button.primary {
+        border-color: transparent;
+        color: #04211d;
+        background: linear-gradient(135deg, var(--mint), var(--teal));
+        font-weight: 800;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+        gap: 18px;
+      }
+
+      .section-grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(18, 40, 43, 0.92), rgba(12, 28, 31, 0.92));
+        box-shadow: var(--shadow);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 18px 0;
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .card-subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .card-body {
+        padding: 18px;
+      }
+
+      .status-card {
+        min-height: 326px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .status-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 210px;
+        gap: 22px;
+        align-items: center;
+      }
+
+      .status-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 34px;
+        border: 1px solid rgba(98, 241, 210, 0.28);
+        border-radius: 999px;
+        padding: 0 12px;
+        color: var(--mint);
+        background: rgba(98, 241, 210, 0.08);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 18px currentColor;
+      }
+
+      .state-heading {
+        margin: 18px 0 8px;
+        font-size: clamp(34px, 5vw, 62px);
+        line-height: 0.95;
+      }
+
+      .state-copy {
+        max-width: 580px;
+        color: var(--soft);
+        line-height: 1.55;
+      }
+
+      .countdown {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 16px;
+        color: var(--yellow);
+        font-weight: 800;
+      }
+
+      .wearable {
+        height: 250px;
+        border-radius: 48px;
+        border: 10px solid rgba(238, 253, 249, 0.13);
+        background: linear-gradient(155deg, #0b1719, #143437);
+        position: relative;
+        box-shadow: inset 0 0 60px rgba(98, 241, 210, 0.08), 0 30px 80px rgba(0, 0, 0, 0.28);
+      }
+
+      .wearable::before,
+      .wearable::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 82px;
+        height: 44px;
+        background: rgba(238, 253, 249, 0.12);
+      }
+
+      .wearable::before {
+        top: -54px;
+        border-radius: 26px 26px 6px 6px;
+      }
+
+      .wearable::after {
+        bottom: -54px;
+        border-radius: 6px 6px 26px 26px;
+      }
+
+      .wearable-screen {
+        position: absolute;
+        inset: 18px;
+        border-radius: 32px;
+        border: 1px solid rgba(98, 241, 210, 0.18);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        background:
+          linear-gradient(180deg, rgba(98, 241, 210, 0.1), rgba(98, 241, 210, 0.02)),
+          #071315;
+      }
+
+      .heart-line {
+        width: 90px;
+        height: 40px;
+        margin: 0 auto 12px;
+        display: flex;
+        align-items: end;
+        gap: 5px;
+      }
+
+      .bar {
+        flex: 1;
+        background: linear-gradient(var(--mint), var(--teal));
+        border-radius: 8px 8px 2px 2px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .metric-grid.three-col {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .metric-grid.two-col {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric {
+        min-height: 112px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 14px;
+        background: rgba(7, 19, 21, 0.42);
+      }
+
+      .metric-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .metric-value {
+        margin: 14px 0 4px;
+        font-size: 28px;
+        font-weight: 850;
+      }
+
+      .metric-note {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .chart {
+        height: 220px;
+        display: flex;
+        align-items: end;
+        gap: 7px;
+        padding-top: 22px;
+      }
+
+      .chart-column {
+        flex: 1;
+        min-width: 8px;
+        border-radius: 8px 8px 2px 2px;
+        background: linear-gradient(180deg, var(--mint), rgba(19, 184, 166, 0.42));
+        box-shadow: 0 0 24px rgba(98, 241, 210, 0.12);
+      }
+
+      .timeline {
+        display: grid;
+        gap: 12px;
+      }
+
+      .event {
+        display: grid;
+        grid-template-columns: 12px minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+        padding: 12px;
+        border-radius: var(--radius);
+        background: rgba(7, 19, 21, 0.38);
+        border: 1px solid rgba(148, 237, 218, 0.1);
+      }
+
+      .event-marker {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-top: 6px;
+      }
+
+      .event-title {
+        margin: 0;
+        font-weight: 760;
+      }
+
+      .event-meta {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        border-radius: 999px;
+        padding: 0 10px;
+        font-size: 12px;
+        font-weight: 800;
+        border: 1px solid currentColor;
+        color: var(--mint);
+        background: rgba(98, 241, 210, 0.08);
+      }
+
+      .badge.warning {
+        color: var(--yellow);
+        background: rgba(255, 209, 102, 0.1);
+      }
+
+      .badge.danger {
+        color: var(--red);
+        background: rgba(255, 93, 108, 0.1);
+      }
+
+      .profile-row,
+      .settings-row,
+      .hardware-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(148, 237, 218, 0.1);
+      }
+
+      .profile-row:last-child,
+      .settings-row:last-child,
+      .hardware-row:last-child {
+        border-bottom: 0;
+      }
+
+      .row-label {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .row-value {
+        text-align: right;
+        color: var(--text);
+        font-weight: 760;
+      }
+
+      .row-edit-control {
+        min-width: 220px;
+        max-width: 320px;
+        width: 100%;
+        border: 1px solid rgba(148, 237, 218, 0.14);
+        border-radius: 10px;
+        background: rgba(7, 19, 21, 0.46);
+        color: var(--text);
+        padding: 8px 10px;
+        font: inherit;
+      }
+
+      .row-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .range {
+        width: 128px;
+        accent-color: var(--mint);
+      }
+
+      .toggle-button {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid rgba(98, 241, 210, 0.26);
+        border-radius: 999px;
+        background: rgba(98, 241, 210, 0.1);
+        cursor: pointer;
+      }
+
+      .toggle-button::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--mint);
+      }
+
+      .toggle-button.off {
+        border-color: rgba(146, 170, 167, 0.28);
+        background: rgba(146, 170, 167, 0.12);
+      }
+
+      .toggle-button.off::after {
+        right: 21px;
+        background: var(--muted);
+      }
+
+      .footer-note {
+        margin: 16px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 1120px) {
+        .app-shell {
+          grid-template-columns: 1fr;
+        }
+
+        .app-shell.sidebar-collapsed {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: relative;
+          height: auto;
+          padding: 16px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          overflow-y: visible;
+        }
+
+        .nav {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .sidebar-footer {
+          position: static;
+          margin-top: 14px;
+        }
+
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .page-grid.two-col,
+        .page-grid.three-col,
+        .chart-grid,
+        .page-summary,
+        .field-grid,
+        .field-grid.three-col {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .main {
+          padding: 18px 14px;
+        }
+
+        .topbar {
+          display: grid;
+        }
+
+        .topbar-actions {
+          justify-content: stretch;
+        }
+
+        .button {
+          flex: 1;
+        }
+
+        .nav {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .status-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .wearable {
+          max-width: 210px;
+          margin: 30px auto 10px;
+        }
+
+        .metric-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .metric-grid.three-col,
+        .metric-grid.two-col {
+          grid-template-columns: 1fr;
+        }
+
+        .page-summary,
+        .chart-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .field-grid,
+        .field-grid.three-col {
+          grid-template-columns: 1fr;
+        }
+
+        .event {
+          grid-template-columns: 10px minmax(0, 1fr);
+        }
+
+        .event .badge {
+          grid-column: 2;
+          width: fit-content;
+        }
+      }
+
+      @media (max-width: 460px) {
+        .metric-grid,
+        .nav {
+          grid-template-columns: 1fr;
+        }
+
+        .profile-row,
+        .settings-row,
+        .hardware-row {
+          display: grid;
+        }
+
+        .row-value {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      const navItems = [
+        { label: "Overview", icon: "◎", target: "overview" },
+        { label: "Live Monitor", icon: "▥", target: "live-monitor" },
+        { label: "Fall Events", icon: "◷", target: "fall-events" },
+        { label: "Wearer Profile", icon: "☰", target: "wearer-profile" },
+        { label: "Device Settings", icon: "⚙", target: "device-settings" },
+        { label: "Project Info", icon: "⌁", target: "project-info" },
+      ];
+
+      const pageMeta = {
+        overview: { eyebrow: "WEARABLE SAFETY MONITOR", title: "Overview", copy: "Current state, device status, and battery charge live here." },
+        "live-monitor": { eyebrow: "WEARABLE SAFETY MONITOR", title: "Live Monitor", copy: "Sensor readings and motion charts are combined on this page." },
+        "fall-events": { eyebrow: "WEARABLE SAFETY MONITOR", title: "Fall Events", copy: "Timeline logs and emergency alert controls are combined here." },
+        "wearer-profile": { eyebrow: "WEARABLE SAFETY MONITOR", title: "Wearer Profile", copy: "Profile details and analytics are grouped together." },
+        "device-settings": { eyebrow: "WEARABLE SAFETY MONITOR", title: "Device Settings", copy: "Thresholds, toggles, and fall-detection logic settings live here." },
+        "project-info": { eyebrow: "WEARABLE SAFETY MONITOR", title: "Project Info", copy: "Hardware and project reference details are shown here." },
+      };
+
+      const initialEvents = [
+        { title: "Normal monitoring started", meta: "09:41 AM · Sensor stream stable", tone: "ok", tag: "Normal" },
+        { title: "Freefall detected", meta: "Yesterday · 0.34 g for 380 ms", tone: "warn", tag: "Freefall" },
+        { title: "Impact confirmed", meta: "Yesterday · 2.82 g peak force", tone: "danger", tag: "Impact" },
+        { title: "Alarm cancelled", meta: "Yesterday · Button press confirmed", tone: "ok", tag: "Cancelled" },
+        { title: "SOS triggered", meta: "Apr 29 · Local buzzer verified", tone: "danger", tag: "SOS" },
+      ];
+
+      const demoStates = [
+        { value: "NORMAL", label: "Normal" },
+        { value: "FREEFALL", label: "Freefall detected" },
+        { value: "IMPACT", label: "Impact detected" },
+        { value: "PRE ALARM", label: "Pre-alarm" },
+        { value: "SOS SENT", label: "SOS triggered" },
+      ];
+
+      const stateLabelToMode = {
+        Normal: "NORMAL",
+        "Freefall detected": "FREEFALL",
+        "Impact detected": "IMPACT",
+        "Pre-alarm": "PRE ALARM",
+        "SOS triggered": "SOS SENT",
+      };
+
+      const modeToStateLabel = {
+        NORMAL: "Normal",
+        FREEFALL: "Freefall detected",
+        IMPACT: "Impact detected",
+        "PRE ALARM": "Pre-alarm",
+        "SOS SENT": "SOS triggered",
+      };
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function App() {
+        const [active, setActive] = useState("overview");
+        const [mode, setMode] = useState("NORMAL");
+        const [seconds, setSeconds] = useState(10);
+        const [buzzerEnabled, setBuzzerEnabled] = useState(true);
+        const [ledEnabled, setLedEnabled] = useState(true);
+        const [simulationEnabled, setSimulationEnabled] = useState(true);
+        const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+        const [overviewData, setOverviewData] = useState({
+          deviceName: "ESP32-C3 Wearable",
+          deviceStatus: "Simulated Offline",
+          battery: 87,
+          currentAction: "Normal",
+        });
+        const [profileData, setProfileData] = useState({
+          name: "Aarav Mehta",
+          age: "68",
+          bloodGroup: "B+",
+          emergencyContact: "+91 98765 43210",
+          medicalNotes: "Fall risk, lives alone",
+          deviceAssignedId: "FALL-C3-001",
+        });
+        const [settingsData, setSettingsData] = useState({
+          freefallThreshold: "0.4",
+          impactThreshold: "2.5",
+          preAlarmDuration: "10",
+          sampleInterval: "50",
+        });
+        const [projectData, setProjectData] = useState({
+          board: "ESP32-C3 Super Mini",
+          sensor: "MPU-9250 sensor",
+          buzzer: "Active-low buzzer",
+          mode: "Offline mode",
+          i2cPins: "GPIO 8 / GPIO 9",
+          calibrationStatus: "Pending / local demo",
+        });
+        const [analyticsData, setAnalyticsData] = useState({
+          totalFalls: "03",
+          falseAlarms: "01",
+          averageImpact: "2.82",
+          monitoringUptime: "96",
+          dailyActivity: "78",
+          weeklySafety: "92",
+        });
+        const [alertData, setAlertData] = useState({
+          emergencyContact: "Primary caregiver placeholder",
+          responseNote: "Call if SOS stays active for 60 seconds",
+          testMode: "Local alarm and log only",
+        });
+        const [editMode, setEditMode] = useState({
+          overview: false,
+          live: false,
+          alert: false,
+          profile: false,
+          analytics: false,
+          settings: false,
+          project: false,
+        });
+        const [draftOverview, setDraftOverview] = useState(null);
+        const [draftSensor, setDraftSensor] = useState(null);
+        const [draftAlert, setDraftAlert] = useState(null);
+        const [draftProfile, setDraftProfile] = useState(null);
+        const [draftAnalytics, setDraftAnalytics] = useState(null);
+        const [draftSettings, setDraftSettings] = useState(null);
+        const [draftProject, setDraftProject] = useState(null);
+        const [events, setEvents] = useState(initialEvents);
+        const [sensor, setSensor] = useState({
+          ax: 0.04,
+          ay: 0.98,
+          az: 0.13,
+          magnitude: 1.01,
+          pitch: 4.7,
+          battery: 87,
+          uptime: 96,
+        });
+        const [history, setHistory] = useState(
+          Array.from({ length: 28 }, (_, index) => 38 + Math.sin(index / 2) * 16 + Math.random() * 10)
+        );
+
+        const currentPage = pageMeta[active] || pageMeta.overview;
+
+        const stateTheme = useMemo(() => {
+          if (mode === "SOS SENT") return { color: "var(--red)", label: "SOS triggered", copy: "Emergency alarm is active. Buzzer and LED are locked on until the wearer cancels it." };
+          if (mode === "PRE ALARM") return { color: "var(--yellow)", label: "Pre-alarm", copy: "A fall pattern was confirmed. The wearer has a short cancellation window before SOS mode." };
+          if (mode === "IMPACT") return { color: "var(--orange)", label: "Impact detected", copy: "High G-force was recorded after possible freefall. The system is validating the event." };
+          if (mode === "FREEFALL") return { color: "var(--cyan)", label: "Freefall detected", copy: "Acceleration dropped below the configured threshold. Waiting for impact confirmation." };
+          return { color: "var(--mint)", label: "Normal", copy: simulationEnabled ? "The wearable is monitoring motion in offline simulation mode. No active emergency is detected." : "The wearable is configured for real-device monitoring. No active emergency is detected." };
+        }, [mode, simulationEnabled]);
+
+        useEffect(() => {
+          if (!simulationEnabled) {
+            return undefined;
+          }
+
+          const timer = setInterval(() => {
+            setSensor((prev) => {
+              const nextAx = Math.sin(Date.now() / 900) * 0.08 + Math.random() * 0.03;
+              const nextAy = 0.96 + Math.cos(Date.now() / 1200) * 0.05;
+              const nextAz = 0.12 + Math.sin(Date.now() / 1500) * 0.06;
+              const magnitude = Math.sqrt(nextAx * nextAx + nextAy * nextAy + nextAz * nextAz);
+              return {
+                ax: nextAx,
+                ay: nextAy,
+                az: nextAz,
+                magnitude,
+                pitch: 4.4 + Math.sin(Date.now() / 1700) * 3.2,
+                battery: clamp(prev.battery - 0.02, 71, 100),
+                uptime: clamp(prev.uptime + 0.01, 0, 100),
+              };
+            });
+
+            setHistory((prev) => {
+              const next = [...prev.slice(1), 38 + Math.random() * 42 + Math.sin(Date.now() / 700) * 12];
+              return next;
+            });
+
+            setSeconds((prev) => (mode === "PRE ALARM" ? Math.max(0, prev - 1) : 10));
+          }, 1000);
+
+          return () => clearInterval(timer);
+        }, [mode, simulationEnabled]);
+
+        useEffect(() => {
+          if (mode === "PRE ALARM" && seconds === 0) {
+            setMode("SOS SENT");
+            addEvent("SOS SENT");
+          }
+        }, [mode, seconds]);
+
+        useEffect(() => {
+          setOverviewData((prev) => ({ ...prev, currentAction: modeToStateLabel[mode] || "Normal" }));
+        }, [mode]);
+
+        function addEvent(nextMode) {
+          const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const tone = nextMode === "SOS SENT" ? "danger" : nextMode === "NORMAL" ? "ok" : "warn";
+          setEvents((prev) => [
+            {
+              title: `${nextMode} state selected`,
+              meta: `${now} · Demo value generated locally`,
+              tone,
+              tag: nextMode,
+            },
+            ...prev.slice(0, 5),
+          ]);
+        }
+
+        function setDemoState(nextMode) {
+          setMode(nextMode);
+          setSeconds(10);
+          addEvent(nextMode);
+        }
+
+        function cancelFalseAlarm() {
+          setMode("NORMAL");
+          setSeconds(10);
+          const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          setEvents((prev) => [
+            {
+              title: "False alarm cancelled",
+              meta: `${now} · Wearer confirmed they are safe`,
+              tone: "ok",
+              tag: "Cancelled",
+            },
+            ...prev.slice(0, 5),
+          ]);
+        }
+
+        function handleNav(item) {
+          setActive(item.target);
+        }
+
+        function setOverviewAction(nextLabel) {
+          setOverviewData((prev) => ({ ...prev, currentAction: nextLabel }));
+          const nextMode = stateLabelToMode[nextLabel];
+          if (nextMode) {
+            setDemoState(nextMode);
+          }
+        }
+
+        function beginEdit(section) {
+          if (section === "overview") setDraftOverview({ ...overviewData });
+          if (section === "live") setDraftSensor({ ...sensor });
+          if (section === "alert") setDraftAlert({ ...alertData });
+          if (section === "profile") setDraftProfile({ ...profileData });
+          if (section === "analytics") setDraftAnalytics({ ...analyticsData });
+          if (section === "settings") setDraftSettings({ ...settingsData });
+          if (section === "project") setDraftProject({ ...projectData });
+          setEditMode((prev) => ({ ...prev, [section]: true }));
+        }
+
+        function cancelEdit(section) {
+          if (section === "overview") setDraftOverview(null);
+          if (section === "live") setDraftSensor(null);
+          if (section === "alert") setDraftAlert(null);
+          if (section === "profile") setDraftProfile(null);
+          if (section === "analytics") setDraftAnalytics(null);
+          if (section === "settings") setDraftSettings(null);
+          if (section === "project") setDraftProject(null);
+          setEditMode((prev) => ({ ...prev, [section]: false }));
+        }
+
+        function saveEdit(section) {
+          if (section === "overview" && draftOverview) {
+            setOverviewData(draftOverview);
+            const nextMode = stateLabelToMode[draftOverview.currentAction];
+            if (nextMode) {
+              setMode(nextMode);
+            }
+          }
+          if (section === "live" && draftSensor) setSensor(draftSensor);
+          if (section === "alert" && draftAlert) setAlertData(draftAlert);
+          if (section === "profile" && draftProfile) setProfileData(draftProfile);
+          if (section === "analytics" && draftAnalytics) setAnalyticsData(draftAnalytics);
+          if (section === "settings" && draftSettings) setSettingsData(draftSettings);
+          if (section === "project" && draftProject) setProjectData(draftProject);
+          cancelEdit(section);
+        }
+
+        function renderPageContent() {
+          if (active === "overview") {
+            return (
+              <div className="page-stack">
+                <section className="card status-card editable-card" id="overview">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Overview</h3>
+                      <p className="card-subtitle">Normal, freefall, battery charge, and device status in one view.</p>
+                    </div>
+                    <span className="badge">Overview</span>
+                  </div>
+                  <div className="card-body">
+                    <div>
+                      <span className="status-label" style={{ color: stateTheme.color }}>
+                        <span className="dot"></span>
+                        {stateTheme.label}
+                      </span>
+                      <h2 className="state-heading">{stateTheme.label}</h2>
+                      <p className="state-copy">{stateTheme.copy}</p>
+                      <div className="page-summary" style={{ marginTop: 18 }}>
+                        <div className="page-summary-card">
+                          <div className="page-summary-label">Device status</div>
+                          <div className="page-summary-value">{overviewData.deviceName}</div>
+                          <div className="page-summary-note">Prototype wearable</div>
+                        </div>
+                        <div className="page-summary-card">
+                          <div className="page-summary-label">Battery charge</div>
+                          <div className="page-summary-value">{overviewData.battery}%</div>
+                          <div className="page-summary-note">Editable sample reading</div>
+                        </div>
+                        <div className="page-summary-card">
+                          <div className="page-summary-label">Current action</div>
+                          <div className="page-summary-value">{overviewData.currentAction}</div>
+                          <div className="page-summary-note">Normal / freefall / impact</div>
+                        </div>
+                      </div>
+                      <div className="page-badges" style={{ marginTop: 18 }}>
+                        {demoStates.map((state) => (
+                          <button key={state.value} className="button" type="button" onClick={() => setDemoState(state.value)}>
+                            {state.label}
+                          </button>
+                        ))}
+                        {(mode === "PRE ALARM" || mode === "SOS SENT") && (
+                          <button className="button primary" type="button" onClick={cancelFalseAlarm}>
+                            Cancel alarm
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="card editable-card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Device Status</h3>
+                      <p className="card-subtitle">Status details shown below the overview to prevent overlap.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit device status"
+                        onClick={() => beginEdit("overview")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                    <span className="badge warning">Offline</span>
+                  </div>
+                  <div className="card-body">
+                    {editMode.overview ? (
+                      <>
+                        <InlineEditableRow
+                          label="Device name"
+                          value={draftOverview?.deviceName || ""}
+                          onChange={(event) => setDraftOverview((prev) => ({ ...prev, deviceName: event.target.value }))}
+                        />
+                        <InlineEditableRow
+                          label="Device status"
+                          value={draftOverview?.deviceStatus || ""}
+                          options={["Simulated Offline", "Connected", "Offline"]}
+                          onChange={(event) => setDraftOverview((prev) => ({ ...prev, deviceStatus: event.target.value }))}
+                        />
+                        <InlineEditableRow
+                          label="Battery charge"
+                          type="number"
+                          value={draftOverview?.battery || ""}
+                          onChange={(event) => setDraftOverview((prev) => ({ ...prev, battery: event.target.value }))}
+                        />
+                        <InlineEditableRow
+                          label="Current action"
+                          value={draftOverview?.currentAction || "Normal"}
+                          options={["Normal", "Freefall detected", "Impact detected", "Pre-alarm", "SOS triggered"]}
+                          onChange={(event) => setDraftOverview((prev) => ({ ...prev, currentAction: event.target.value }))}
+                        />
+                        <div className="row-actions">
+                          <button className="button primary" type="button" onClick={() => saveEdit("overview")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("overview")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <InfoRow label="Device name" value={overviewData.deviceName} />
+                        <InfoRow label="Device status" value={overviewData.deviceStatus} />
+                        <InfoRow label="Battery charge" value={`${overviewData.battery}%`} />
+                        <InfoRow label="Current action" value={overviewData.currentAction} />
+                      </>
+                    )}
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          if (active === "live-monitor") {
+            return (
+              <div className="page-grid two-col">
+                <section className="card editable-card" id="live-monitor">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Live Monitor</h3>
+                      <p className="card-subtitle">Sensor readings editable in a 3-row then 2-row layout.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit live readings"
+                        onClick={() => beginEdit("live")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                    <span className="badge">Live demo</span>
+                  </div>
+                  <div className="card-body">
+                    {editMode.live ? (
+                      <>
+                        <div className="field-grid three-col">
+                          <EditableMetric label="Accel X" value={draftSensor?.ax ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, ax: Number(event.target.value) }))} suffix="g axis" />
+                          <EditableMetric label="Accel Y" value={draftSensor?.ay ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, ay: Number(event.target.value) }))} suffix="g axis" />
+                          <EditableMetric label="Accel Z" value={draftSensor?.az ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, az: Number(event.target.value) }))} suffix="g axis" />
+                        </div>
+                        <div className="field-grid" style={{ marginTop: 12 }}>
+                          <EditableMetric label="G-force" value={draftSensor?.magnitude ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, magnitude: Number(event.target.value) }))} suffix="Total magnitude" />
+                          <EditableMetric label="Pitch" value={draftSensor?.pitch ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, pitch: Number(event.target.value) }))} suffix="Angle estimate" />
+                        </div>
+                        <div className="page-badges" style={{ marginTop: 12 }}>
+                          <button className="button primary" type="button" onClick={() => saveEdit("live")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("live")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="metric-grid three-col">
+                          <Metric label="Accel X" value={Number(sensor.ax).toFixed(2)} note="g axis" accent="var(--mint)" />
+                          <Metric label="Accel Y" value={Number(sensor.ay).toFixed(2)} note="g axis" accent="var(--cyan)" />
+                          <Metric label="Accel Z" value={Number(sensor.az).toFixed(2)} note="g axis" accent="var(--yellow)" />
+                        </div>
+                        <div className="metric-grid two-col" style={{ marginTop: 12 }}>
+                          <Metric label="G-force" value={Number(sensor.magnitude).toFixed(2)} note="Total magnitude" accent="var(--orange)" />
+                          <Metric label="Pitch" value={`${Number(sensor.pitch).toFixed(1)}°`} note="Angle estimate" accent="var(--green)" />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Charts</h3>
+                      <p className="card-subtitle">Acceleration alone is on top; the rest are arranged 2 by 2.</p>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    <div className="chart-grid single-plus-pair">
+                      <div className="chart-card full-width">
+                        <h4>Acceleration over time</h4>
+                        <p>Motion stream sampled from the fake sensor feed.</p>
+                        <div className="mini-chart">
+                          {history.map((height, index) => (
+                            <span key={index} className="mini-chart-bar" style={{ height: `${clamp(height, 10, 96)}%`, opacity: 0.3 + index / 42 }}></span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="chart-grid pairs">
+                        <div className="chart-card">
+                          <h4>G-force spikes</h4>
+                          <p>Short peaks that could indicate impact after freefall.</p>
+                          <div className="mini-chart">
+                            {[12, 18, 26, 34, 44, 30, 52, 62, 40, 28, 72, 38].map((height, index) => (
+                              <span key={index} className="mini-chart-bar" style={{ height: `${height}%`, opacity: 0.45 + index / 36 }}></span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="chart-card">
+                          <h4>Fall events by day</h4>
+                          <p>Daily event count for the current demo week.</p>
+                          <div className="mini-chart">
+                            {[10, 20, 14, 28, 18, 34, 24].map((height, index) => (
+                              <span key={index} className="mini-chart-bar" style={{ height: `${height}%`, opacity: 0.5 + index / 28 }}></span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="chart-card">
+                          <h4>Device battery trend</h4>
+                          <p>Battery stays steady for the offline prototype.</p>
+                          <div className="mini-chart">
+                            {[82, 83, 83, 84, 84, 85, 85, 86, 86, 87].map((height, index) => (
+                              <span key={index} className="mini-chart-bar" style={{ height: `${height - 60}%`, opacity: 0.38 + index / 34 }}></span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="chart-card">
+                          <h4>State transitions</h4>
+                          <p>Normal, freefall, impact, pre-alarm, and SOS changes.</p>
+                          <div className="mini-chart">
+                            {[18, 46, 22, 56, 30, 70, 26, 62, 32, 48].map((height, index) => (
+                              <span key={index} className="mini-chart-bar" style={{ height: `${height}%`, opacity: 0.4 + index / 30 }}></span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          if (active === "fall-events") {
+            return (
+              <div className="page-grid two-col">
+                <section className="card" id="fall-events">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Fall Events</h3>
+                      <p className="card-subtitle">Timestamped logs and severity colors for recent events.</p>
+                    </div>
+                  </div>
+                  <div className="card-body timeline">
+                    {events.map((event, index) => (
+                      <div className="event" key={`${event.title}-${index}`}>
+                        <span
+                          className="event-marker"
+                          style={{
+                            background: event.tone === "danger" ? "var(--red)" : event.tone === "warn" ? "var(--yellow)" : "var(--mint)",
+                            boxShadow: `0 0 18px ${event.tone === "danger" ? "var(--red)" : event.tone === "warn" ? "var(--yellow)" : "var(--mint)"}`,
+                          }}
+                        ></span>
+                        <div>
+                          <p className="event-title">{event.title}</p>
+                          <p className="event-meta">{event.meta}</p>
+                        </div>
+                        <span className={`badge ${event.tone === "danger" ? "danger" : event.tone === "warn" ? "warning" : ""}`}>
+                          {event.tag}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="card editable-card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Emergency Alert Panel</h3>
+                      <p className="card-subtitle">SOS status, countdown, cancel alarm, and test alert controls.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit emergency panel"
+                        onClick={() => beginEdit("alert")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                    <span className={`badge ${mode === "SOS SENT" ? "danger" : mode === "PRE ALARM" ? "warning" : ""}`}>
+                      {mode === "SOS SENT" ? "SOS active" : mode === "PRE ALARM" ? "Pre-alarm active" : "Standby"}
+                    </span>
+                  </div>
+                  <div className="card-body">
+                    {editMode.alert ? (
+                      <>
+                        <InlineEditableRow
+                          label="SOS status"
+                          value={mode === "SOS SENT" ? "Triggered" : "Standby"}
+                          onChange={() => {}}
+                        />
+                        <InlineEditableRow
+                          label="Pre-alarm countdown"
+                          value={mode === "PRE ALARM" ? `${seconds}` : "0"}
+                          onChange={() => {}}
+                          type="number"
+                        />
+                        <InlineEditableRow
+                          label="Emergency contact"
+                          value={draftAlert?.emergencyContact || ""}
+                          onChange={(event) => setDraftAlert((prev) => ({ ...prev, emergencyContact: event.target.value }))}
+                        />
+                        <InlineEditableRow
+                          label="Test mode"
+                          value={draftAlert?.testMode || "Local alarm and log only"}
+                          options={["Local alarm and log only", "Buzzer test", "Full test"]}
+                          onChange={(event) => setDraftAlert((prev) => ({ ...prev, testMode: event.target.value }))}
+                        />
+                        <InlineEditableRow
+                          label="Response note"
+                          value={draftAlert?.responseNote || ""}
+                          onChange={(event) => setDraftAlert((prev) => ({ ...prev, responseNote: event.target.value }))}
+                        />
+                        <div className="row-actions">
+                          <button className="button primary" type="button" onClick={() => saveEdit("alert")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("alert")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <InfoRow label="SOS status" value={mode === "SOS SENT" ? "Triggered" : "Standby"} />
+                        <InfoRow label="Pre-alarm countdown" value={mode === "PRE ALARM" ? `${seconds}s` : "0s"} />
+                        <InfoRow label="Emergency contact" value={alertData.emergencyContact} />
+                        <InfoRow label="Test mode" value={alertData.testMode} />
+                        <InfoRow label="Response note" value={alertData.responseNote} />
+                      </>
+                    )}
+                    <div className="page-badges" style={{ marginTop: 18 }}>
+                      <button className="button primary" type="button" onClick={cancelFalseAlarm}>
+                        Cancel alarm
+                      </button>
+                      <button className="button" type="button" onClick={() => setDemoState("PRE ALARM")}>Trigger test alert</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          if (active === "wearer-profile") {
+            return (
+              <div className="page-grid two-col">
+                <section className="card editable-card" id="wearer-profile">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Wearer Profile</h3>
+                      <p className="card-subtitle">Profile details for the wearer of the device.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit wearer profile"
+                        onClick={() => beginEdit("profile")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {editMode.profile ? (
+                      <>
+                        <InlineEditableRow label="Name" value={draftProfile?.name || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, name: event.target.value }))} />
+                        <InlineEditableRow label="Age" value={draftProfile?.age || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, age: event.target.value }))} type="number" />
+                        <InlineEditableRow label="Blood group" value={draftProfile?.bloodGroup || "B+"} options={["A+", "B+", "O+", "AB+", "A-", "B-", "O-", "AB-"]} onChange={(event) => setDraftProfile((prev) => ({ ...prev, bloodGroup: event.target.value }))} />
+                        <InlineEditableRow label="Emergency contact" value={draftProfile?.emergencyContact || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, emergencyContact: event.target.value }))} />
+                        <InlineEditableRow label="Device assigned ID" value={draftProfile?.deviceAssignedId || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, deviceAssignedId: event.target.value }))} />
+                        <InlineEditableRow label="Medical notes" value={draftProfile?.medicalNotes || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, medicalNotes: event.target.value }))} />
+                        <div className="row-actions">
+                          <button className="button primary" type="button" onClick={() => saveEdit("profile")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("profile")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <InfoRow label="Name" value={profileData.name} />
+                        <InfoRow label="Age" value={profileData.age} />
+                        <InfoRow label="Blood group" value={profileData.bloodGroup} />
+                        <InfoRow label="Emergency contact" value={profileData.emergencyContact} />
+                        <InfoRow label="Device assigned ID" value={profileData.deviceAssignedId} />
+                        <InfoRow label="Medical notes" value={profileData.medicalNotes} />
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="card editable-card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Analysis Section</h3>
+                      <p className="card-subtitle">Three boxes per row, all editable values.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit analysis values"
+                        onClick={() => beginEdit("analytics")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {editMode.analytics ? (
+                      <div className="field-grid three-col">
+                        <EditableMetric label="Total falls detected" value={draftAnalytics?.totalFalls || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, totalFalls: event.target.value }))} suffix="Count" />
+                        <EditableMetric label="False alarms cancelled" value={draftAnalytics?.falseAlarms || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, falseAlarms: event.target.value }))} suffix="Count" />
+                        <EditableMetric label="Average impact force" value={draftAnalytics?.averageImpact || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, averageImpact: event.target.value }))} suffix="g" />
+                        <EditableMetric label="Monitoring uptime" value={draftAnalytics?.monitoringUptime || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, monitoringUptime: event.target.value }))} suffix="%" />
+                        <EditableMetric label="Daily activity summary" value={draftAnalytics?.dailyActivity || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, dailyActivity: event.target.value }))} suffix="%" />
+                        <EditableMetric label="Weekly safety score" value={draftAnalytics?.weeklySafety || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, weeklySafety: event.target.value }))} suffix="/100" />
+                        <div className="page-badges" style={{ gridColumn: "1 / -1" }}>
+                          <button className="button primary" type="button" onClick={() => saveEdit("analytics")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("analytics")}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="field-grid three-col">
+                        <Metric label="Total falls detected" value={analyticsData.totalFalls} note="Count" accent="var(--orange)" />
+                        <Metric label="False alarms cancelled" value={analyticsData.falseAlarms} note="Count" accent="var(--green)" />
+                        <Metric label="Average impact force" value={analyticsData.averageImpact} note="g" accent="var(--cyan)" />
+                        <Metric label="Monitoring uptime" value={`${analyticsData.monitoringUptime}%`} note="Uptime" accent="var(--mint)" />
+                        <Metric label="Daily activity summary" value={`${analyticsData.dailyActivity}%`} note="Activity" accent="var(--yellow)" />
+                        <Metric label="Weekly safety score" value={analyticsData.weeklySafety} note="/100" accent="var(--red)" />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          if (active === "device-settings") {
+            return (
+              <div className="page-grid two-col">
+                <section className="card editable-card" id="device-settings">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Device Settings</h3>
+                      <p className="card-subtitle">Thresholds, toggles, and the fall-detection logic settings.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit device settings"
+                        onClick={() => beginEdit("settings")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {editMode.settings ? (
+                      <>
+                        <InlineEditableRow label="Freefall threshold" type="number" value={draftSettings?.freefallThreshold || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, freefallThreshold: event.target.value }))} />
+                        <InlineEditableRow label="Impact threshold" type="number" value={draftSettings?.impactThreshold || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, impactThreshold: event.target.value }))} />
+                        <InlineEditableRow label="Pre-alarm duration" type="number" value={draftSettings?.preAlarmDuration || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, preAlarmDuration: event.target.value }))} />
+                        <InlineEditableRow label="Sensor interval" type="number" value={draftSettings?.sampleInterval || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, sampleInterval: event.target.value }))} />
+                        <div className="row-actions">
+                          <button className="button primary" type="button" onClick={() => saveEdit("settings")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("settings")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <InfoRow label="Freefall threshold" value={`${settingsData.freefallThreshold} g`} />
+                        <InfoRow label="Impact threshold" value={`${settingsData.impactThreshold} g`} />
+                        <InfoRow label="Pre-alarm duration" value={`${settingsData.preAlarmDuration} sec`} />
+                        <InfoRow label="Sensor interval" value={`${settingsData.sampleInterval} ms`} />
+                      </>
+                    )}
+                    <div className="page-badges" style={{ marginTop: 18 }}>
+                      <ToggleRow label="Buzzer toggle" enabled={buzzerEnabled} onClick={() => setBuzzerEnabled((value) => !value)} />
+                      <ToggleRow label="LED toggle" enabled={ledEnabled} onClick={() => setLedEnabled((value) => !value)} />
+                      <ToggleRow label="Simulation toggle" enabled={simulationEnabled} onClick={() => setSimulationEnabled((value) => !value)} />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Detection Logic</h3>
+                      <p className="card-subtitle">How the fall state machine interprets a possible fall.</p>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    <InfoRow label="Freefall" value="Very low acceleration below 0.4 g" />
+                    <InfoRow label="Impact" value="Strong hit above 2.5 g after freefall" />
+                    <InfoRow label="Pre-alarm" value="10 sec cancellation window" />
+                    <InfoRow label="SOS triggered" value="Buzzer and LED stay active" />
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          if (active === "project-info") {
+            return (
+              <div className="page-grid two-col">
+                <section className="card editable-card" id="project-info">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Project Info</h3>
+                      <p className="card-subtitle">Hardware reference for the current wearable build.</p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-toggle"
+                        type="button"
+                        title="Edit project info"
+                        onClick={() => beginEdit("project")}
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {editMode.project ? (
+                      <>
+                        <InlineEditableRow label="Board" value={draftProject?.board || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, board: event.target.value }))} />
+                        <InlineEditableRow label="Sensor" value={draftProject?.sensor || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, sensor: event.target.value }))} />
+                        <InlineEditableRow label="Buzzer" value={draftProject?.buzzer || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, buzzer: event.target.value }))} />
+                        <InlineEditableRow label="Mode" value={draftProject?.mode || "Offline mode"} options={["Offline mode", "Simulation mode", "Connected mode"]} onChange={(event) => setDraftProject((prev) => ({ ...prev, mode: event.target.value }))} />
+                        <InlineEditableRow label="I2C pins" value={draftProject?.i2cPins || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, i2cPins: event.target.value }))} />
+                        <InlineEditableRow label="Button calibration status" value={draftProject?.calibrationStatus || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, calibrationStatus: event.target.value }))} />
+                        <div className="row-actions">
+                          <button className="button primary" type="button" onClick={() => saveEdit("project")}>Save</button>
+                          <button className="button" type="button" onClick={() => cancelEdit("project")}>Cancel</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <InfoRow label="Board" value={projectData.board} />
+                        <InfoRow label="Sensor" value={projectData.sensor} />
+                        <InfoRow label="Buzzer" value={projectData.buzzer} />
+                        <InfoRow label="Mode" value={projectData.mode} />
+                        <InfoRow label="I2C pins" value={projectData.i2cPins} />
+                        <InfoRow label="Button calibration status" value={projectData.calibrationStatus} />
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="card editable-card">
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">Device Status</h3>
+                      <p className="card-subtitle">Current prototype state for quick reference.</p>
+                    </div>
+                    <span className="badge warning">Offline</span>
+                  </div>
+                  <div className="card-body">
+                    <InfoRow label="Device" value={overviewData.deviceName} />
+                    <InfoRow label="Sensor health" value="MPU-9250 OK" />
+                    <InfoRow label="Connection" value={overviewData.deviceStatus} />
+                    <InfoRow label="Battery" value={`${overviewData.battery}%`} />
+                    <InfoRow label="Last sync" value="Local only" />
+                    <InfoRow label="Firmware" value="v0.1-demo" />
+                  </div>
+                </section>
+              </div>
+            );
+          }
+
+          return null;
+        }
+
+        const showEmergencyActions = active === "fall-events";
+
+        return (
+          <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+            <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+              <div className="brand" onClick={() => setSidebarCollapsed((value) => !value)} title="Toggle sidebar">
+                <div className="brand-mark">
+                  <div className="pulse-ring"></div>
+                </div>
+                <div>
+                  <p className="brand-title">FallGuard C3</p>
+                  <p className="brand-subtitle">Wearable safety monitor</p>
+                </div>
+              </div>
+
+              <nav className="nav">
+                {navItems.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className={`nav-button ${active === item.target ? "active" : ""}`}
+                    onClick={() => handleNav(item)}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              <div className="sidebar-footer">
+                <p className="footer-label">Device Mode</p>
+                <p className="footer-value">{overviewData.deviceStatus}</p>
+                <p className="footer-note">Built for ESP32-C3 Super Mini with MPU-9250 fall detection logic.</p>
+              </div>
+            </aside>
+
+            <main className="main">
+              <header className="topbar">
+                <div>
+                  <div className="eyebrow">{currentPage.eyebrow}</div>
+                  <h1>{currentPage.title}</h1>
+                  <p className="topbar-copy">{currentPage.copy}</p>
+                </div>
+                {showEmergencyActions ? (
+                  <div className="topbar-actions">
+                    <button className="button" type="button" onClick={() => setDemoState("PRE ALARM")}>Test Alert</button>
+                    <button className="button primary" type="button" onClick={cancelFalseAlarm}>Cancel False Alarm</button>
+                  </div>
+                ) : null}
+              </header>
+
+              {renderPageContent()}
+            </main>
+          </div>
+        );
+      }
+
+      function Metric({ label, value, note, accent }) {
+        return (
+          <article className="metric">
+            <div className="metric-top">
+              <span>{label}</span>
+              <span style={{ color: accent }}>●</span>
+            </div>
+            <div className="metric-value">{value}</div>
+            <div className="metric-note">{note}</div>
+          </article>
+        );
+      }
+
+      function InfoRow({ label, value }) {
+        return (
+          <div className="profile-row">
+            <span className="row-label">{label}</span>
+            <span className="row-value">{value}</span>
+          </div>
+        );
+      }
+
+      function Setting({ label, value }) {
+        return (
+          <div className="settings-row">
+            <span className="row-label">{label}</span>
+            <span className="row-value">{value}</span>
+          </div>
+        );
+      }
+
+      function ToggleRow({ label, enabled, onClick }) {
+        return (
+          <div className="settings-row">
+            <span className="row-label">{label}</span>
+            <button
+              className={`toggle-button ${enabled ? "" : "off"}`}
+              type="button"
+              onClick={onClick}
+              aria-label={`${label} ${enabled ? "on" : "off"}`}
+              title={`${label}: ${enabled ? "On" : "Off"}`}
+            ></button>
+          </div>
+        );
+      }
+
+      function InlineEditableRow({ label, value, onChange, type = "text", options }) {
+        return (
+          <div className="profile-row">
+            <span className="row-label">{label}</span>
+            {options ? (
+              <select className="row-edit-control" value={value} onChange={onChange}>
+                {options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input className="row-edit-control" type={type} value={value} onChange={onChange} />
+            )}
+          </div>
+        );
+      }
+
+      function EditableField({ label, value, onChange, type = "text", options, multiline = false }) {
+        return (
+          <div className="field">
+            <label>{label}</label>
+            {multiline ? (
+              <textarea value={value} onChange={onChange} />
+            ) : options ? (
+              <select value={value} onChange={onChange}>
+                {options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input type={type} value={value} onChange={onChange} />
+            )}
+          </div>
+        );
+      }
+
+      function EditableMetric({ label, value, onChange, suffix = "" }) {
+        return (
+          <article className="metric editable-card">
+            <div className="metric-top">
+              <span>{label}</span>
+              <span style={{ color: "var(--mint)" }}>✎</span>
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <input value={value} onChange={onChange} />
+            </div>
+            {suffix ? <div className="metric-note">{suffix}</div> : <div className="metric-note">Editable value</div>}
+          </article>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
