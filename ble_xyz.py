@@ -1,18 +1,25 @@
 import asyncio
 import json
 import math
+import mimetypes
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
-import numpy as np
-from bleak import BleakClient, BleakScanner
+try:
+    from bleak import BleakClient, BleakScanner
+except ImportError:  # pragma: no cover - local hardware dependency
+    BleakClient = None
+    BleakScanner = None
 
 CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 DEVICE_NAME = "FALL_ALARM_C3"
 
 HTTP_HOST = "127.0.0.1"
 HTTP_PORT = 8765
+BASE_DIR = Path(__file__).resolve().parent
 
 STATE_TO_STAGE = {
     "NORM": "Normal",
@@ -198,24 +205,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if self.path in ("/", "/dashboard"):
+        parsed = urlsplit(self.path)
+        req_path = parsed.path
+
+        if req_path in ("/", "/dashboard"):
             self.serve_dashboard()
             return
 
-        if self.path == "/api/status":
+        if req_path == "/api/status":
             self.send_json(get_latest_payload())
             return
 
-        if self.path == "/events":
+        if req_path == "/events":
             self.stream_events()
+            return
+
+        if req_path.startswith("/assets/"):
+            self.serve_asset(req_path)
             return
 
         self.send_error(404, "Not found")
 
     def serve_dashboard(self):
         content = b""
+        dashboard_path = BASE_DIR / "fall-detection-dashboard.html"
         try:
-            with open("fall-detection-dashboard.html", "rb") as handle:
+            with open(dashboard_path, "rb") as handle:
                 content = handle.read()
         except FileNotFoundError:
             self.send_error(404, "Dashboard file not found")
@@ -226,6 +241,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def serve_asset(self, req_path):
+        rel_path = req_path[len("/assets/"):]
+        rel_path = unquote(rel_path).replace("\\", "/")
+
+        if not rel_path or ".." in rel_path.split("/"):
+            self.send_error(400, "Invalid asset path")
+            return
+
+        asset_path = (BASE_DIR / "assets" / rel_path).resolve()
+        assets_root = (BASE_DIR / "assets").resolve()
+
+        if not str(asset_path).startswith(str(assets_root)) or not asset_path.is_file():
+            self.send_error(404, "Asset not found")
+            return
+
+        content_type, _ = mimetypes.guess_type(str(asset_path))
+        if not content_type:
+            content_type = "application/octet-stream"
+
+        data = asset_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def send_json(self, payload):
         content = json.dumps(payload).encode("utf-8")
@@ -266,8 +307,27 @@ def start_http_server():
     return server
 
 
+async def run_offline_loop():
+    while True:
+        publish_payload(
+            {
+                **get_latest_payload(),
+                "connected": False,
+                "deviceStatus": "Offline",
+                "sequence": next_sequence(),
+                "timestamp": time.time(),
+            }
+        )
+        print("Bleak not installed. Running dashboard server in offline mode.")
+        await asyncio.sleep(5)
+
+
 async def main():
     start_http_server()
+
+    if BleakClient is None or BleakScanner is None:
+        await run_offline_loop()
+        return
 
     while True:
         print("Scanning...")
