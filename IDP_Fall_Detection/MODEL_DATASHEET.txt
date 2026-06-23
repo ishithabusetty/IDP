@@ -1,0 +1,56 @@
+
+╔══════════════════════════════════════════════════════════════╗
+║        MODEL DATASHEET — Fall Detection System               ║
+║        Handover Document for ECE Firmware Team               ║
+╚══════════════════════════════════════════════════════════════╝
+ 
+─── DATASETS ──────────────────────────────────────────────────
+  SisFall : 19 fall + 15 ADL types   | original 200 Hz
+  KFall   : Task 20–34=Fall, 1–19=ADL | original 100 Hz
+ 
+─── PREPROCESSING — REPLICATE IN C++ ──────────────────────────
+  1. Resample    → 100 Hz (linear interp)
+  2. Butterworth → order=6, cutoff=20.0Hz, zero-phase (fwd+bwd)
+  3. Features    → ch7=acc_mag, ch8=gyro_mag  (total 8 ch)
+  4. Z-score     → (x - mean) / std  per channel
+       mean file : norm_mean.npy  shape=(1,1,8)
+       std  file : norm_std.npy   shape=(1,1,8)
+ 
+─── HARDWARE ──────────────────────────────────────────────────
+  IMU rate      : 100 Hz  ← set in hardware register
+  Channels      : AccX AccY AccZ GyrX GyrY GyrZ
+ 
+─── WINDOWING ─────────────────────────────────────────────────
+  Window        : 300 samples = 3.0 s
+  Step          : 150 samples = 1.5 s
+  New prediction every 1500 ms
+ 
+─── TENSORS ───────────────────────────────────────────────────
+  Input  shape  : [1, 300, 8]  dtype: int8
+  Output shape  : [1, 1]        dtype: int8
+  Input  quant  : scale=0.22892156  zp=-44
+  Output quant  : scale=0.00390625  zp=-128
+  Threshold     : 0.57
+  Labels        : 0=Non-Fall  1=Fall
+ 
+─── PERFORMANCE ───────────────────────────────────────────────
+  Accuracy  : 93.83%
+  Precision : 94.33%
+  Recall    : 89.89%  (missed falls: 10.11%)
+  F1 Score  : 92.05%
+  Latency   : ~10.5 ms/window (GPU; measure on MCU)
+ 
+─── MODEL SIZE ────────────────────────────────────────────────
+  Float32   : 828.2 KB
+  Int8      : 263.2 KB  (68% smaller)
+ 
+─── FIRMWARE RULES ────────────────────────────────────────────
+  Consistency   : 3 consecutive fall preds → alert
+  Cancel timer  : 10–20 s countdown; motion/button cancels
+  Duty cycle    : infer every 1500 ms
+ 
+─── DELIVERABLES ──────────────────────────────────────────────
+  model.h                  ← include in firmware
+  fall_model_int8.tflite   ← binary
+  norm_mean.npy            ← 8 mean values
+  norm_std.npy             ← 8 std values
