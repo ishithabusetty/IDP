@@ -922,7 +922,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useEffect, useMemo, useState } = React;
+      const { useEffect, useMemo, useRef, useState } = React;
 
       const navItems = [
         { label: "Overview", icon: "◎", target: "overview" },
@@ -973,6 +973,64 @@
         "PRE ALARM": "Pre-alarm",
         "SOS SENT": "SOS triggered",
       };
+
+      const backendBaseUrl = window.location.origin && window.location.origin !== "null" && window.location.origin.startsWith("http")
+        ? window.location.origin
+        : "http://127.0.0.1:8765";
+
+      const stateMachineToStage = {
+        NORMAL: "Normal",
+        FREEFALL: "Fall",
+        IMPACT: "Impact",
+        "PRE ALARM": "Fall",
+        "SOS SENT": "SOS",
+      };
+
+      const stageTone = {
+        Normal: "ok",
+        Fall: "warn",
+        Impact: "danger",
+        SOS: "danger",
+      };
+
+      function getStageFromPayload(payload) {
+        const stage = String(payload?.stage || "").trim();
+        if (stage) {
+          return stage;
+        }
+
+        const mode = String(payload?.mode || "").trim().toUpperCase();
+        if (mode in stateMachineToStage) {
+          return stateMachineToStage[mode];
+        }
+
+        const action = String(payload?.currentAction || "").toLowerCase();
+        if (action.includes("sos")) return "SOS";
+        if (action.includes("impact")) return "Impact";
+        if (action.includes("fall") || action.includes("freefall") || action.includes("alarm")) return "Fall";
+
+        return "Normal";
+      }
+
+      function getToneForStage(stage) {
+        return stageTone[stage] || "ok";
+      }
+
+      function createLiveAnalyticsData() {
+        return {
+          totalFalls: "00",
+          falseAlarms: "00",
+          averageImpact: "0.00",
+          monitoringUptime: "100",
+          dailyActivity: "0",
+          weeklySafety: "100",
+        };
+      }
+
+      function formatNumber(value, digits = 2) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric.toFixed(digits) : (0).toFixed(digits);
+      }
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -1044,11 +1102,17 @@
         const [draftSettings, setDraftSettings] = useState(null);
         const [draftProject, setDraftProject] = useState(null);
         const [events, setEvents] = useState(initialEvents);
+        const [liveEvents, setLiveEvents] = useState([]);
+        const [displayStage, setDisplayStage] = useState("Normal");
         const [sensor, setSensor] = useState({
           ax: 0.04,
           ay: 0.98,
           az: 0.13,
+          gx: 0.02,
+          gy: 0.04,
+          gz: 0.01,
           magnitude: 1.01,
+          gyroMagnitude: 0.05,
           pitch: 4.7,
           battery: 87,
           uptime: 96,
@@ -1056,15 +1120,40 @@
         const [history, setHistory] = useState(
           Array.from({ length: 28 }, (_, index) => 38 + Math.sin(index / 2) * 16 + Math.random() * 10)
         );
+        const [liveAnalyticsData, setLiveAnalyticsData] = useState(createLiveAnalyticsData());
+        const liveStageRef = useRef(null);
+        const liveStatsRef = useRef({
+          sampleCount: 0,
+          normalCount: 0,
+          fallCount: 0,
+          impactCount: 0,
+          sosCount: 0,
+          totalMagnitude: 0,
+          impactMagnitude: 0,
+          falseAlarms: 0,
+          lastAlertStage: null,
+          lastConnected: null,
+        });
+        const eventSourceRef = useRef(null);
 
         const currentPage = pageMeta[active] || pageMeta.overview;
+        const connectedMode = !simulationEnabled;
+        const connectionLabel = connectedMode ? "Connected" : "Simulated Connection";
+        const timelineEvents = simulationEnabled ? events : liveEvents;
+        const analyticsViewData = simulationEnabled ? analyticsData : liveAnalyticsData;
 
         const stateTheme = useMemo(() => {
           if (mode === "SOS SENT") return { color: "var(--red)", label: "SOS triggered", copy: "Emergency alarm is active. Buzzer and LED are locked on until the wearer cancels it." };
           if (mode === "PRE ALARM") return { color: "var(--yellow)", label: "Pre-alarm", copy: "A fall pattern was confirmed. The wearer has a short cancellation window before SOS mode." };
           if (mode === "IMPACT") return { color: "var(--orange)", label: "Impact detected", copy: "High G-force was recorded after possible freefall. The system is validating the event." };
           if (mode === "FREEFALL") return { color: "var(--cyan)", label: "Freefall detected", copy: "Acceleration dropped below the configured threshold. Waiting for impact confirmation." };
-          return { color: "var(--mint)", label: "Normal", copy: simulationEnabled ? "The wearable is monitoring motion in offline simulation mode. No active emergency is detected." : "The wearable is configured for real-device monitoring. No active emergency is detected." };
+          return {
+            color: "var(--mint)",
+            label: "Normal",
+            copy: simulationEnabled
+              ? "The wearable is monitoring motion in offline simulation mode. No active emergency is detected."
+              : "The wearable is connected to the board and reflecting live device state.",
+          };
         }, [mode, simulationEnabled]);
 
         useEffect(() => {
@@ -1077,12 +1166,20 @@
               const nextAx = Math.sin(Date.now() / 900) * 0.08 + Math.random() * 0.03;
               const nextAy = 0.96 + Math.cos(Date.now() / 1200) * 0.05;
               const nextAz = 0.12 + Math.sin(Date.now() / 1500) * 0.06;
+              const nextGx = Math.sin(Date.now() / 1100) * 0.22;
+              const nextGy = Math.cos(Date.now() / 1300) * 0.18;
+              const nextGz = Math.sin(Date.now() / 1700) * 0.14;
               const magnitude = Math.sqrt(nextAx * nextAx + nextAy * nextAy + nextAz * nextAz);
+              const gyroMagnitude = Math.sqrt(nextGx * nextGx + nextGy * nextGy + nextGz * nextGz);
               return {
                 ax: nextAx,
                 ay: nextAy,
                 az: nextAz,
+                gx: nextGx,
+                gy: nextGy,
+                gz: nextGz,
                 magnitude,
+                gyroMagnitude,
                 pitch: 4.4 + Math.sin(Date.now() / 1700) * 3.2,
                 battery: clamp(prev.battery - 0.02, 71, 100),
                 uptime: clamp(prev.uptime + 0.01, 0, 100),
@@ -1098,6 +1195,170 @@
           }, 1000);
 
           return () => clearInterval(timer);
+        }, [mode, simulationEnabled]);
+
+        useEffect(() => {
+          if (simulationEnabled) {
+            setDisplayStage(modeToStateLabel[mode] || "Normal");
+            liveStageRef.current = null;
+            liveStatsRef.current = {
+              sampleCount: 0,
+              normalCount: 0,
+              fallCount: 0,
+              impactCount: 0,
+              sosCount: 0,
+              totalMagnitude: 0,
+              impactMagnitude: 0,
+              falseAlarms: 0,
+              lastAlertStage: null,
+              lastConnected: null,
+            };
+            setLiveEvents([]);
+            setLiveAnalyticsData(createLiveAnalyticsData());
+            return undefined;
+          }
+
+          let cancelled = false;
+          const source = new EventSource(`${backendBaseUrl}/events`);
+          eventSourceRef.current = source;
+
+          function ingestPayload(payload) {
+            if (cancelled || !payload) {
+              return;
+            }
+
+            const nextMode = payload.mode || "NORMAL";
+            const nextAction = payload.currentAction || modeToStateLabel[nextMode] || "Normal";
+            const nextStage = getStageFromPayload(payload);
+            const connected = payload.connected !== false;
+            const battery = Number.isFinite(Number(payload.battery)) ? Number(payload.battery) : null;
+
+            setMode(nextMode);
+            setOverviewData((prev) => ({
+              ...prev,
+              deviceStatus: connectionLabel,
+              battery: battery !== null ? clamp(battery, 0, 100) : prev.battery,
+              currentAction: nextAction,
+            }));
+            setDisplayStage(nextStage);
+            setSensor((prev) => ({
+              ...prev,
+              ax: Number.isFinite(Number(payload.ax)) ? Number(payload.ax) : prev.ax,
+              ay: Number.isFinite(Number(payload.ay)) ? Number(payload.ay) : prev.ay,
+              az: Number.isFinite(Number(payload.az)) ? Number(payload.az) : prev.az,
+              gx: Number.isFinite(Number(payload.gx)) ? Number(payload.gx) : prev.gx,
+              gy: Number.isFinite(Number(payload.gy)) ? Number(payload.gy) : prev.gy,
+              gz: Number.isFinite(Number(payload.gz)) ? Number(payload.gz) : prev.gz,
+              magnitude: Number.isFinite(Number(payload.magnitude)) ? Number(payload.magnitude) : prev.magnitude,
+              gyroMagnitude: Number.isFinite(Number(payload.gyroMagnitude)) ? Number(payload.gyroMagnitude) : prev.gyroMagnitude,
+              pitch: Number.isFinite(Number(payload.pitch)) ? Number(payload.pitch) : prev.pitch,
+              battery: battery !== null ? clamp(battery, 0, 100) : prev.battery,
+            }));
+
+            setHistory((prev) => {
+              const nextValue = Number.isFinite(Number(payload.magnitude)) ? Number(payload.magnitude) * 20 : prev[prev.length - 1];
+              return [...prev.slice(1), clamp(nextValue, 10, 96)];
+            });
+
+            const stats = liveStatsRef.current;
+            stats.sampleCount += 1;
+            stats.lastConnected = connected;
+            stats.totalMagnitude += Number.isFinite(Number(payload.magnitude)) ? Number(payload.magnitude) : 0;
+            if (nextStage === "Normal") {
+              stats.normalCount += 1;
+            }
+            if (nextStage === "Fall") {
+              stats.fallCount += 1;
+            }
+            if (nextStage === "Impact") {
+              stats.impactCount += 1;
+              stats.impactMagnitude += Number.isFinite(Number(payload.magnitude)) ? Number(payload.magnitude) : 0;
+            }
+            if (nextStage === "SOS") {
+              stats.sosCount += 1;
+              stats.impactMagnitude += Number.isFinite(Number(payload.magnitude)) ? Number(payload.magnitude) : 0;
+            }
+            if (liveStageRef.current !== "Normal" && nextStage === "Normal" && stats.lastAlertStage && stats.lastAlertStage !== "SOS") {
+              stats.falseAlarms += 1;
+            }
+            if (nextStage !== liveStageRef.current) {
+              const now = new Date();
+              const clock = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              setLiveEvents((prev) => [
+                {
+                  title: `${nextStage} stage`,
+                  meta: `${clock} · ${payload.currentAction || nextMode} · ax ${formatNumber(payload.ax)} ay ${formatNumber(payload.ay)} az ${formatNumber(payload.az)} gx ${formatNumber(payload.gx)} gy ${formatNumber(payload.gy)} gz ${formatNumber(payload.gz)}`,
+                  tone: getToneForStage(nextStage),
+                  tag: nextStage,
+                },
+                ...prev.slice(0, 5),
+              ]);
+              if (nextStage !== "Normal") {
+                stats.lastAlertStage = nextStage;
+              } else {
+                stats.lastAlertStage = null;
+              }
+              liveStageRef.current = nextStage;
+            }
+
+            const totalEvents = stats.normalCount + stats.fallCount + stats.impactCount + stats.sosCount;
+            const motionShare = totalEvents ? ((stats.fallCount + stats.impactCount + stats.sosCount) / totalEvents) * 100 : 0;
+            const impactAverage = stats.impactCount + stats.sosCount
+              ? stats.impactMagnitude / (stats.impactCount + stats.sosCount)
+              : 0;
+            const safetyScore = clamp(
+              100 - stats.fallCount * 3 - stats.impactCount * 8 - stats.sosCount * 15 - stats.falseAlarms * 2,
+              0,
+              100
+            );
+            const uptime = connected ? 100 : 0;
+
+            setLiveAnalyticsData({
+              totalFalls: String(stats.fallCount + stats.impactCount + stats.sosCount).padStart(2, "0"),
+              falseAlarms: String(stats.falseAlarms).padStart(2, "0"),
+              averageImpact: formatNumber(impactAverage),
+              monitoringUptime: String(Math.round(uptime)),
+              dailyActivity: String(Math.round(motionShare)),
+              weeklySafety: String(Math.round(safetyScore)),
+            });
+          }
+
+          source.onmessage = (event) => {
+            try {
+              ingestPayload(JSON.parse(event.data));
+            } catch (error) {
+              console.error("Failed to parse live dashboard event", error);
+            }
+          };
+
+          source.onerror = () => {
+            if (!cancelled) {
+              setOverviewData((prev) => ({ ...prev, deviceStatus: connectionLabel }));
+            }
+          };
+
+          const pollLatest = () => {
+            fetch(`${backendBaseUrl}/api/status`)
+              .then((response) => response.json())
+              .then((payload) => ingestPayload(payload))
+              .catch(() => {});
+          };
+
+          pollLatest();
+          const pollTimer = setInterval(pollLatest, 1000);
+
+          return () => {
+            cancelled = true;
+            source.close();
+            clearInterval(pollTimer);
+            eventSourceRef.current = null;
+          };
+        }, [simulationEnabled, connectionLabel]);
+
+        useEffect(() => {
+          if (simulationEnabled) {
+            setDisplayStage(modeToStateLabel[mode] || "Normal");
+          }
         }, [mode, simulationEnabled]);
 
         useEffect(() => {
@@ -1205,7 +1466,7 @@
                   <div className="card-header">
                     <div>
                       <h3 className="card-title">Overview</h3>
-                      <p className="card-subtitle">Normal, freefall, battery charge, and device status in one view.</p>
+                      <p className="card-subtitle">Device state, battery charge, current state, and connection status in one view.</p>
                     </div>
                     <span className="badge">Overview</span>
                   </div>
@@ -1219,33 +1480,35 @@
                       <p className="state-copy">{stateTheme.copy}</p>
                       <div className="page-summary" style={{ marginTop: 18 }}>
                         <div className="page-summary-card">
-                          <div className="page-summary-label">Device status</div>
-                          <div className="page-summary-value">{overviewData.deviceName}</div>
-                          <div className="page-summary-note">Prototype wearable</div>
+                          <div className="page-summary-label">Device state</div>
+                          <div className="page-summary-value">{displayStage}</div>
+                          <div className="page-summary-note">Current board state</div>
                         </div>
                         <div className="page-summary-card">
                           <div className="page-summary-label">Battery charge</div>
                           <div className="page-summary-value">{overviewData.battery}%</div>
-                          <div className="page-summary-note">Editable sample reading</div>
+                          <div className="page-summary-note">Charge level</div>
                         </div>
                         <div className="page-summary-card">
-                          <div className="page-summary-label">Current action</div>
-                          <div className="page-summary-value">{overviewData.currentAction}</div>
-                          <div className="page-summary-note">Normal / freefall / impact</div>
+                          <div className="page-summary-label">Device status</div>
+                          <div className="page-summary-value">{connectionLabel}</div>
+                          <div className="page-summary-note">{simulationEnabled ? "Offline simulation" : "Live board stream"}</div>
                         </div>
                       </div>
-                      <div className="page-badges" style={{ marginTop: 18 }}>
-                        {demoStates.map((state) => (
-                          <button key={state.value} className="button" type="button" onClick={() => setDemoState(state.value)}>
-                            {state.label}
-                          </button>
-                        ))}
-                        {(mode === "PRE ALARM" || mode === "SOS SENT") && (
-                          <button className="button primary" type="button" onClick={cancelFalseAlarm}>
-                            Cancel alarm
-                          </button>
-                        )}
-                      </div>
+                      {simulationEnabled && (
+                        <div className="page-badges" style={{ marginTop: 18 }}>
+                          {demoStates.map((state) => (
+                            <button key={state.value} className="button" type="button" onClick={() => setDemoState(state.value)}>
+                              {state.label}
+                            </button>
+                          ))}
+                          {(mode === "PRE ALARM" || mode === "SOS SENT") && (
+                            <button className="button primary" type="button" onClick={cancelFalseAlarm}>
+                              Cancel alarm
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1256,20 +1519,10 @@
                       <h3 className="card-title">Device Status</h3>
                       <p className="card-subtitle">Status details shown below the overview to prevent overlap.</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit device status"
-                        onClick={() => beginEdit("overview")}
-                      >
-                        ✎
-                      </button>
-                    </div>
-                    <span className="badge warning">Offline</span>
+                    <span className={`badge ${connectedMode ? "" : "warning"}`}>{connectionLabel}</span>
                   </div>
                   <div className="card-body">
-                    {editMode.overview ? (
+                    {simulationEnabled && editMode.overview ? (
                       <>
                         <InlineEditableRow
                           label="Device name"
@@ -1295,16 +1548,16 @@
                           onChange={(event) => setDraftOverview((prev) => ({ ...prev, currentAction: event.target.value }))}
                         />
                         <div className="row-actions">
-                          <button className="button primary" type="button" onClick={() => saveEdit("overview")}>Save</button>
-                          <button className="button" type="button" onClick={() => cancelEdit("overview")}>Cancel</button>
-                        </div>
+                        <button className="button primary" type="button" onClick={() => saveEdit("overview")}>Save</button>
+                        <button className="button" type="button" onClick={() => cancelEdit("overview")}>Cancel</button>
+                      </div>
                       </>
                     ) : (
                       <>
-                        <InfoRow label="Device name" value={overviewData.deviceName} />
-                        <InfoRow label="Device status" value={overviewData.deviceStatus} />
+                        <InfoRow label="Device state" value={displayStage} />
+                        <InfoRow label="Device status" value={connectionLabel} />
                         <InfoRow label="Battery charge" value={`${overviewData.battery}%`} />
-                        <InfoRow label="Current action" value={overviewData.currentAction} />
+                        <InfoRow label="Current state" value={displayStage} />
                       </>
                     )}
                   </div>
@@ -1320,27 +1573,34 @@
                   <div className="card-header">
                     <div>
                       <h3 className="card-title">Live Monitor</h3>
-                      <p className="card-subtitle">Sensor readings editable in a 3-row then 2-row layout.</p>
+                      <p className="card-subtitle">{simulationEnabled ? "Sensor readings editable in a 3-row then 2-row layout." : "Live accelerometer and gyroscope readings from the board."}</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit live readings"
-                        onClick={() => beginEdit("live")}
-                      >
-                        ✎
-                      </button>
-                    </div>
-                    <span className="badge">Live demo</span>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit live readings"
+                          onClick={() => beginEdit("live")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
+                    <span className="badge">{simulationEnabled ? "Live demo" : "Connected"}</span>
                   </div>
                   <div className="card-body">
-                    {editMode.live ? (
+                    {simulationEnabled && editMode.live ? (
                       <>
                         <div className="field-grid three-col">
                           <EditableMetric label="Accel X" value={draftSensor?.ax ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, ax: Number(event.target.value) }))} suffix="g axis" />
                           <EditableMetric label="Accel Y" value={draftSensor?.ay ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, ay: Number(event.target.value) }))} suffix="g axis" />
                           <EditableMetric label="Accel Z" value={draftSensor?.az ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, az: Number(event.target.value) }))} suffix="g axis" />
+                        </div>
+                        <div className="field-grid three-col" style={{ marginTop: 12 }}>
+                          <EditableMetric label="Gyro X" value={draftSensor?.gx ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, gx: Number(event.target.value) }))} suffix="deg/s" />
+                          <EditableMetric label="Gyro Y" value={draftSensor?.gy ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, gy: Number(event.target.value) }))} suffix="deg/s" />
+                          <EditableMetric label="Gyro Z" value={draftSensor?.gz ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, gz: Number(event.target.value) }))} suffix="deg/s" />
                         </div>
                         <div className="field-grid" style={{ marginTop: 12 }}>
                           <EditableMetric label="G-force" value={draftSensor?.magnitude ?? ""} onChange={(event) => setDraftSensor((prev) => ({ ...prev, magnitude: Number(event.target.value) }))} suffix="Total magnitude" />
@@ -1357,6 +1617,11 @@
                           <Metric label="Accel X" value={Number(sensor.ax).toFixed(2)} note="g axis" accent="var(--mint)" />
                           <Metric label="Accel Y" value={Number(sensor.ay).toFixed(2)} note="g axis" accent="var(--cyan)" />
                           <Metric label="Accel Z" value={Number(sensor.az).toFixed(2)} note="g axis" accent="var(--yellow)" />
+                        </div>
+                        <div className="metric-grid three-col" style={{ marginTop: 12 }}>
+                          <Metric label="Gyro X" value={Number(sensor.gx).toFixed(2)} note="deg/s" accent="var(--orange)" />
+                          <Metric label="Gyro Y" value={Number(sensor.gy).toFixed(2)} note="deg/s" accent="var(--green)" />
+                          <Metric label="Gyro Z" value={Number(sensor.gz).toFixed(2)} note="deg/s" accent="var(--red)" />
                         </div>
                         <div className="metric-grid two-col" style={{ marginTop: 12 }}>
                           <Metric label="G-force" value={Number(sensor.magnitude).toFixed(2)} note="Total magnitude" accent="var(--orange)" />
@@ -1378,7 +1643,7 @@
                     <div className="chart-grid single-plus-pair">
                       <div className="chart-card full-width">
                         <h4>Acceleration over time</h4>
-                        <p>Motion stream sampled from the fake sensor feed.</p>
+                        <p>{simulationEnabled ? "Motion stream sampled from the fake sensor feed." : "Motion stream sampled from the live board."}</p>
                         <div className="mini-chart">
                           {history.map((height, index) => (
                             <span key={index} className="mini-chart-bar" style={{ height: `${clamp(height, 10, 96)}%`, opacity: 0.3 + index / 42 }}></span>
@@ -1397,7 +1662,7 @@
                         </div>
                         <div className="chart-card">
                           <h4>Fall events by day</h4>
-                          <p>Daily event count for the current demo week.</p>
+                          <p>{simulationEnabled ? "Daily event count for the current demo week." : "Live event count for the current window."}</p>
                           <div className="mini-chart">
                             {[10, 20, 14, 28, 18, 34, 24].map((height, index) => (
                               <span key={index} className="mini-chart-bar" style={{ height: `${height}%`, opacity: 0.5 + index / 28 }}></span>
@@ -1406,7 +1671,7 @@
                         </div>
                         <div className="chart-card">
                           <h4>Device battery trend</h4>
-                          <p>Battery stays steady for the offline prototype.</p>
+                          <p>{simulationEnabled ? "Battery stays steady for the offline prototype." : "Battery reflects the latest live board value."}</p>
                           <div className="mini-chart">
                             {[82, 83, 83, 84, 84, 85, 85, 86, 86, 87].map((height, index) => (
                               <span key={index} className="mini-chart-bar" style={{ height: `${height - 60}%`, opacity: 0.38 + index / 34 }}></span>
@@ -1415,7 +1680,7 @@
                         </div>
                         <div className="chart-card">
                           <h4>State transitions</h4>
-                          <p>Normal, freefall, impact, pre-alarm, and SOS changes.</p>
+                          <p>Normal, fall, impact, and SOS changes.</p>
                           <div className="mini-chart">
                             {[18, 46, 22, 56, 30, 70, 26, 62, 32, 48].map((height, index) => (
                               <span key={index} className="mini-chart-bar" style={{ height: `${height}%`, opacity: 0.4 + index / 30 }}></span>
@@ -1437,11 +1702,11 @@
                   <div className="card-header">
                     <div>
                       <h3 className="card-title">Fall Events</h3>
-                      <p className="card-subtitle">Timestamped logs and severity colors for recent events.</p>
+                      <p className="card-subtitle">{simulationEnabled ? "Timestamped logs and severity colors for recent events." : "Live stage logs for normal, fall, impact, and SOS transitions."}</p>
                     </div>
                   </div>
                   <div className="card-body timeline">
-                    {events.map((event, index) => (
+                    {timelineEvents.map((event, index) => (
                       <div className="event" key={`${event.title}-${index}`}>
                         <span
                           className="event-marker"
@@ -1466,24 +1731,26 @@
                   <div className="card-header">
                     <div>
                       <h3 className="card-title">Emergency Alert Panel</h3>
-                      <p className="card-subtitle">SOS status, countdown, cancel alarm, and test alert controls.</p>
+                      <p className="card-subtitle">{simulationEnabled ? "SOS status, countdown, cancel alarm, and test alert controls." : "Emergency state mirrors the live board and stays read-only."}</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit emergency panel"
-                        onClick={() => beginEdit("alert")}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit emergency panel"
+                          onClick={() => beginEdit("alert")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
                     <span className={`badge ${mode === "SOS SENT" ? "danger" : mode === "PRE ALARM" ? "warning" : ""}`}>
                       {mode === "SOS SENT" ? "SOS active" : mode === "PRE ALARM" ? "Pre-alarm active" : "Standby"}
                     </span>
                   </div>
                   <div className="card-body">
-                    {editMode.alert ? (
+                    {simulationEnabled && editMode.alert ? (
                       <>
                         <InlineEditableRow
                           label="SOS status"
@@ -1526,12 +1793,14 @@
                         <InfoRow label="Response note" value={alertData.responseNote} />
                       </>
                     )}
-                    <div className="page-badges" style={{ marginTop: 18 }}>
-                      <button className="button primary" type="button" onClick={cancelFalseAlarm}>
-                        Cancel alarm
-                      </button>
-                      <button className="button" type="button" onClick={() => setDemoState("PRE ALARM")}>Trigger test alert</button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="page-badges" style={{ marginTop: 18 }}>
+                        <button className="button primary" type="button" onClick={cancelFalseAlarm}>
+                          Cancel alarm
+                        </button>
+                        <button className="button" type="button" onClick={() => setDemoState("PRE ALARM")}>Trigger test alert</button>
+                      </div>
+                    )}
                   </div>
                 </section>
               </div>
@@ -1547,19 +1816,21 @@
                       <h3 className="card-title">Wearer Profile</h3>
                       <p className="card-subtitle">Profile details for the wearer of the device.</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit wearer profile"
-                        onClick={() => beginEdit("profile")}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit wearer profile"
+                          onClick={() => beginEdit("profile")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="card-body">
-                    {editMode.profile ? (
+                    {simulationEnabled && editMode.profile ? (
                       <>
                         <InlineEditableRow label="Name" value={draftProfile?.name || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, name: event.target.value }))} />
                         <InlineEditableRow label="Age" value={draftProfile?.age || ""} onChange={(event) => setDraftProfile((prev) => ({ ...prev, age: event.target.value }))} type="number" />
@@ -1589,21 +1860,23 @@
                   <div className="card-header">
                     <div>
                       <h3 className="card-title">Analysis Section</h3>
-                      <p className="card-subtitle">Three boxes per row, all editable values.</p>
+                      <p className="card-subtitle">{simulationEnabled ? "Three boxes per row, all editable values." : "Derived from the live sensor stream and stage transitions."}</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit analysis values"
-                        onClick={() => beginEdit("analytics")}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit analysis values"
+                          onClick={() => beginEdit("analytics")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="card-body">
-                    {editMode.analytics ? (
+                    {simulationEnabled && editMode.analytics ? (
                       <div className="field-grid three-col">
                         <EditableMetric label="Total falls detected" value={draftAnalytics?.totalFalls || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, totalFalls: event.target.value }))} suffix="Count" />
                         <EditableMetric label="False alarms cancelled" value={draftAnalytics?.falseAlarms || ""} onChange={(event) => setDraftAnalytics((prev) => ({ ...prev, falseAlarms: event.target.value }))} suffix="Count" />
@@ -1618,12 +1891,12 @@
                       </div>
                     ) : (
                       <div className="field-grid three-col">
-                        <Metric label="Total falls detected" value={analyticsData.totalFalls} note="Count" accent="var(--orange)" />
-                        <Metric label="False alarms cancelled" value={analyticsData.falseAlarms} note="Count" accent="var(--green)" />
-                        <Metric label="Average impact force" value={analyticsData.averageImpact} note="g" accent="var(--cyan)" />
-                        <Metric label="Monitoring uptime" value={`${analyticsData.monitoringUptime}%`} note="Uptime" accent="var(--mint)" />
-                        <Metric label="Daily activity summary" value={`${analyticsData.dailyActivity}%`} note="Activity" accent="var(--yellow)" />
-                        <Metric label="Weekly safety score" value={analyticsData.weeklySafety} note="/100" accent="var(--red)" />
+                        <Metric label="Total falls detected" value={analyticsViewData.totalFalls} note="Count" accent="var(--orange)" />
+                        <Metric label="False alarms cancelled" value={analyticsViewData.falseAlarms} note="Count" accent="var(--green)" />
+                        <Metric label="Average impact force" value={analyticsViewData.averageImpact} note="g" accent="var(--cyan)" />
+                        <Metric label="Monitoring uptime" value={`${analyticsViewData.monitoringUptime}%`} note="Uptime" accent="var(--mint)" />
+                        <Metric label="Daily activity summary" value={`${analyticsViewData.dailyActivity}%`} note="Activity" accent="var(--yellow)" />
+                        <Metric label="Weekly safety score" value={analyticsViewData.weeklySafety} note="/100" accent="var(--red)" />
                       </div>
                     )}
                   </div>
@@ -1641,19 +1914,21 @@
                       <h3 className="card-title">Device Settings</h3>
                       <p className="card-subtitle">Thresholds, toggles, and the fall-detection logic settings.</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit device settings"
-                        onClick={() => beginEdit("settings")}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit device settings"
+                          onClick={() => beginEdit("settings")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="card-body">
-                    {editMode.settings ? (
+                    {simulationEnabled && editMode.settings ? (
                       <>
                         <InlineEditableRow label="Freefall threshold" type="number" value={draftSettings?.freefallThreshold || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, freefallThreshold: event.target.value }))} />
                         <InlineEditableRow label="Impact threshold" type="number" value={draftSettings?.impactThreshold || ""} onChange={(event) => setDraftSettings((prev) => ({ ...prev, impactThreshold: event.target.value }))} />
@@ -1672,11 +1947,13 @@
                         <InfoRow label="Sensor interval" value={`${settingsData.sampleInterval} ms`} />
                       </>
                     )}
-                    <div className="page-badges" style={{ marginTop: 18 }}>
-                      <ToggleRow label="Buzzer toggle" enabled={buzzerEnabled} onClick={() => setBuzzerEnabled((value) => !value)} />
-                      <ToggleRow label="LED toggle" enabled={ledEnabled} onClick={() => setLedEnabled((value) => !value)} />
-                      <ToggleRow label="Simulation toggle" enabled={simulationEnabled} onClick={() => setSimulationEnabled((value) => !value)} />
-                    </div>
+                    {simulationEnabled && (
+                      <div className="page-badges" style={{ marginTop: 18 }}>
+                        <ToggleRow label="Buzzer toggle" enabled={buzzerEnabled} onClick={() => setBuzzerEnabled((value) => !value)} />
+                        <ToggleRow label="LED toggle" enabled={ledEnabled} onClick={() => setLedEnabled((value) => !value)} />
+                        <ToggleRow label="Simulation toggle" enabled={simulationEnabled} onClick={() => setSimulationEnabled((value) => !value)} />
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -1707,19 +1984,21 @@
                       <h3 className="card-title">Project Info</h3>
                       <p className="card-subtitle">Hardware reference for the current wearable build.</p>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="edit-toggle"
-                        type="button"
-                        title="Edit project info"
-                        onClick={() => beginEdit("project")}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                    {simulationEnabled && (
+                      <div className="card-actions">
+                        <button
+                          className="edit-toggle"
+                          type="button"
+                          title="Edit project info"
+                          onClick={() => beginEdit("project")}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="card-body">
-                    {editMode.project ? (
+                    {simulationEnabled && editMode.project ? (
                       <>
                         <InlineEditableRow label="Board" value={draftProject?.board || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, board: event.target.value }))} />
                         <InlineEditableRow label="Sensor" value={draftProject?.sensor || ""} onChange={(event) => setDraftProject((prev) => ({ ...prev, sensor: event.target.value }))} />
@@ -1737,7 +2016,7 @@
                         <InfoRow label="Board" value={projectData.board} />
                         <InfoRow label="Sensor" value={projectData.sensor} />
                         <InfoRow label="Buzzer" value={projectData.buzzer} />
-                        <InfoRow label="Mode" value={projectData.mode} />
+                        <InfoRow label="Mode" value={simulationEnabled ? projectData.mode : "Connected mode"} />
                         <InfoRow label="I2C pins" value={projectData.i2cPins} />
                         <InfoRow label="Button calibration status" value={projectData.calibrationStatus} />
                       </>
@@ -1751,14 +2030,14 @@
                       <h3 className="card-title">Device Status</h3>
                       <p className="card-subtitle">Current prototype state for quick reference.</p>
                     </div>
-                    <span className="badge warning">Offline</span>
+                    <span className={`badge ${connectedMode ? "" : "warning"}`}>{connectionLabel}</span>
                   </div>
                   <div className="card-body">
-                    <InfoRow label="Device" value={overviewData.deviceName} />
+                    <InfoRow label="Device state" value={displayStage} />
                     <InfoRow label="Sensor health" value="MPU-9250 OK" />
-                    <InfoRow label="Connection" value={overviewData.deviceStatus} />
+                    <InfoRow label="Connection" value={connectionLabel} />
                     <InfoRow label="Battery" value={`${overviewData.battery}%`} />
-                    <InfoRow label="Last sync" value="Local only" />
+                    <InfoRow label="Last sync" value={simulationEnabled ? "Local only" : "Live board"} />
                     <InfoRow label="Firmware" value="v0.1-demo" />
                   </div>
                 </section>
@@ -1769,7 +2048,7 @@
           return null;
         }
 
-        const showEmergencyActions = active === "fall-events";
+        const showEmergencyActions = active === "fall-events" && simulationEnabled;
 
         return (
           <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -1800,7 +2079,14 @@
 
               <div className="sidebar-footer">
                 <p className="footer-label">Device Mode</p>
-                <p className="footer-value">{overviewData.deviceStatus}</p>
+                <p className="footer-value">{connectionLabel}</p>
+                <div className="page-badges" style={{ marginTop: 12 }}>
+                  <ToggleRow
+                    label="Connected mode"
+                    enabled={!simulationEnabled}
+                    onClick={() => setSimulationEnabled((value) => !value)}
+                  />
+                </div>
                 <p className="footer-note">Built for ESP32-C3 Super Mini with MPU-9250 fall detection logic.</p>
               </div>
             </aside>
@@ -1810,7 +2096,7 @@
                 <div>
                   <div className="eyebrow">{currentPage.eyebrow}</div>
                   <h1>{currentPage.title}</h1>
-                  <p className="topbar-copy">{currentPage.copy}</p>
+                  <p className="topbar-copy">{active === "fall-events" && !simulationEnabled ? "Timeline logs and live stage transitions are combined here." : currentPage.copy}</p>
                 </div>
                 {showEmergencyActions ? (
                   <div className="topbar-actions">
